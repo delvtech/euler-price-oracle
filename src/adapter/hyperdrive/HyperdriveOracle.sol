@@ -58,12 +58,12 @@ contract HyperdriveOracle is BaseAdapter {
     function _encodeAssetAddress(
         AssetId.AssetIdPrefix assetType,
         uint256 maturityTimestamp
-    ) internal view returns (address) {
+    ) internal pure returns (address) {
         // Get the token ID using Hyperdrive's library
         uint256 tokenId = AssetId.encodeAssetId(assetType, maturityTimestamp);
 
-        // Convert token ID to address - similar to how address(840) represents USD
-        return address(uint160(tokenId));
+        // Convert token ID to address - keep only the timestamp part and add the prefix in the high bits
+        return address(uint160(tokenId & type(uint160).max) | (uint160(uint8(assetType)) << 156));
     }
 
     /// @notice Get a quote for Hyperdrive ERC1155 tokens
@@ -94,7 +94,7 @@ contract HyperdriveOracle is BaseAdapter {
         }
 
         // Apply scaling and return quote
-        return ScaleUtils.calculateQuoteAmount(inAmount, price, scale);
+        return ScaleUtils.calcOutAmount(inAmount, price, scale, true);
     }
 
     /// @dev Decode the asset ID from an encoded address
@@ -102,7 +102,21 @@ contract HyperdriveOracle is BaseAdapter {
     /// @return prefix The position type
     /// @return timestamp The maturity timestamp
     function _decodeAssetId(address encodedAddress) internal pure returns (AssetId.AssetIdPrefix prefix, uint256 timestamp) {
-        // Convert address back to token ID and decode using Hyperdrive's library
-        return AssetId.decodeAssetId(uint256(uint160(encodedAddress)));
+        // Extract prefix from high bits and timestamp from low bits
+        prefix = AssetId.AssetIdPrefix(uint8(uint160(encodedAddress) >> 156));
+        timestamp = uint256(uint160(encodedAddress) & ((1 << 156) - 1));
+    }
+
+    /// @dev Exposed version of _decodeAssetId for testing
+    function exposed_decodeAssetId(address encodedAddress) public pure returns (AssetId.AssetIdPrefix prefix, uint256 timestamp) {
+        return _decodeAssetId(encodedAddress);
+    }
+
+    /// @dev Exposed version of _encodeAssetAddress for testing
+    function exposed_encodeAssetAddress(
+        AssetId.AssetIdPrefix assetType,
+        uint256 maturityTimestamp
+    ) public pure returns (address) {
+        return _encodeAssetAddress(assetType, maturityTimestamp);
     }
 }
